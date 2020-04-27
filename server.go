@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"sync"
 
-	"github.com/tidwall/redcon"
 	badger "github.com/dgraph-io/badger/v2"
+	"github.com/tidwall/redcon"
 )
 
 var addr = ":6969"
@@ -18,6 +19,8 @@ func main() {
 		log.Fatal(badger_err)
 	}
 	defer db.Close()
+
+	// GET, SMEMBERS, HSET, HINCR, HGETALL, KEYS, SADD, SREM, DEL
 
 	var mu sync.RWMutex
 	var items = make(map[string][]byte)
@@ -32,12 +35,42 @@ func main() {
 			case "quit":
 				conn.WriteString("OK")
 				conn.Close()
+			case "sadd":
+				_key := cmd.Args[1]
+				_toAdd := cmd.Args[2:]
+				// for _ta in _toAdd
+				log.Printf("%s", _key)
+				log.Printf("%s", _toAdd)
+
+				set_err := db.Update(func(txn *badger.Txn) error {
+
+					for i, s := range _toAdd {
+						log.Printf("%d %s", i, s)
+						set_key := []byte(fmt.Sprintf("%s::%d", _key, i))
+						log.Printf("setting: %s %s", set_key, s)
+						err := txn.Set(set_key, s)
+
+						if err != nil {
+							log.Println(err)
+							return err
+						}
+					}
+
+					return nil
+
+				})
+
+				if set_err != nil {
+					conn.WriteNull()
+				} else {
+					conn.WriteString("OK")
+				}
 			case "set":
 				if len(cmd.Args) != 3 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
-				mu.Lock()
+				// mu.Lock()
 				// items[string(cmd.Args[1])] = cmd.Args[2]
 
 				set_err := db.Update(func(txn *badger.Txn) error {
@@ -45,7 +78,7 @@ func main() {
 					return err
 				})
 
-				mu.Unlock()
+				// mu.Unlock()
 				if set_err != nil {
 					conn.WriteNull()
 				} else {
@@ -57,18 +90,17 @@ func main() {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
-				mu.RLock()
+				// mu.RLock()
 				// val, ok := items[string(cmd.Args[1])]
 
-				
-				var bdgr_val []byte
+				var bdgrVal []byte
 				get_err := db.View(func(txn *badger.Txn) error {
 					item, g_err := txn.Get(cmd.Args[1])
 					if g_err != nil {
 						return g_err
 					}
 					err := item.Value(func(val []byte) error {
-						bdgr_val = append([]byte{}, val...)
+						bdgrVal = append([]byte{}, val...)
 						return nil
 					})
 
@@ -79,14 +111,14 @@ func main() {
 					return nil
 				})
 
-				// log.Printf("%s", bdgr_val)
+				// log.Printf("%s", bdgrVal)
 
-				mu.RUnlock()
+				// mu.RUnlock()
 				if get_err != nil {
 					conn.WriteNull()
 				} else {
 					// conn.WriteBulk(val)
-					conn.WriteBulk(bdgr_val)
+					conn.WriteBulk(bdgrVal)
 				}
 			case "del":
 				if len(cmd.Args) != 2 {
