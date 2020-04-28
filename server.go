@@ -42,7 +42,7 @@ func main() {
 				log.Printf("%s", _key)
 				log.Printf("%s", _toAdd)
 
-				set_err := db.Update(func(txn *badger.Txn) error {
+				setErr := db.Update(func(txn *badger.Txn) error {
 
 					for i, s := range _toAdd {
 						log.Printf("%d %s", i, s)
@@ -60,11 +60,14 @@ func main() {
 
 				})
 
-				if set_err != nil {
+				if setErr != nil {
 					conn.WriteNull()
 				} else {
 					conn.WriteString("OK")
 				}
+			case "smembers":
+				log.Printf("%s", cmd)
+				conn.WriteNull()
 			case "set":
 				if len(cmd.Args) != 3 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
@@ -73,13 +76,13 @@ func main() {
 				// mu.Lock()
 				// items[string(cmd.Args[1])] = cmd.Args[2]
 
-				set_err := db.Update(func(txn *badger.Txn) error {
+				setErr := db.Update(func(txn *badger.Txn) error {
 					err := txn.Set(cmd.Args[1], cmd.Args[2])
 					return err
 				})
 
 				// mu.Unlock()
-				if set_err != nil {
+				if setErr != nil {
 					conn.WriteNull()
 				} else {
 					conn.WriteString("OK")
@@ -94,10 +97,10 @@ func main() {
 				// val, ok := items[string(cmd.Args[1])]
 
 				var bdgrVal []byte
-				get_err := db.View(func(txn *badger.Txn) error {
-					item, g_err := txn.Get(cmd.Args[1])
-					if g_err != nil {
-						return g_err
+				getErr := db.View(func(txn *badger.Txn) error {
+					item, gErr := txn.Get(cmd.Args[1])
+					if gErr != nil {
+						return gErr
 					}
 					err := item.Value(func(val []byte) error {
 						bdgrVal = append([]byte{}, val...)
@@ -114,7 +117,7 @@ func main() {
 				// log.Printf("%s", bdgrVal)
 
 				// mu.RUnlock()
-				if get_err != nil {
+				if getErr != nil {
 					conn.WriteNull()
 				} else {
 					// conn.WriteBulk(val)
