@@ -43,10 +43,10 @@ func main() {
 				log.Printf("%s", _toAdd)
 
 				setErr := db.Update(func(txn *badger.Txn) error {
-
+					// set::<set_name>::member
 					for i, s := range _toAdd {
 						log.Printf("%d %s", i, s)
-						set_key := []byte(fmt.Sprintf("%s::%d", _key, i))
+						set_key := []byte(fmt.Sprintf("set::%s::%s", _key, s))
 						log.Printf("setting: %s %s", set_key, s)
 						err := txn.Set(set_key, s)
 
@@ -67,7 +67,39 @@ func main() {
 				}
 			case "smembers":
 				log.Printf("%s", cmd)
-				conn.WriteNull()
+				keyz := map[string]string{}
+				err := db.View(func(txn *badger.Txn) error {
+					itr := txn.NewIterator(badger.DefaultIteratorOptions)
+					defer itr.Close()
+					prefix := []byte(fmt.Sprintf("set::%s::", cmd.Args[1]))
+
+					for itr.Seek(prefix); itr.ValidForPrefix(prefix); itr.Next() {
+						_item := itr.Item()
+						// _key := _item.Key()
+						_err := _item.Value(func(_val []byte) error {
+							// log.Printf("%s :: %s", _key, _val)
+							keyz[fmt.Sprintf("%s", _val)] = fmt.Sprintf("%s", _val)
+							return nil
+						})
+						if _err != nil {
+							return _err
+						}
+					}
+
+					log.Printf("Length: %d", len(keyz))
+					log.Printf("%s", keyz)
+
+					return nil
+				})
+
+				if err != nil {
+					conn.WriteError("ERR")
+				} else {
+					conn.WriteArray(len(keyz))
+					for _, v := range keyz {
+						conn.WriteBulk([]byte(v))
+					}
+				}
 			case "set":
 				if len(cmd.Args) != 3 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
