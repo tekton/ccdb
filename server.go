@@ -14,7 +14,7 @@ var addr = ":6969"
 
 func main() {
 
-	db, badger_err := badger.Open(badger.DefaultOptions("cc.db"))
+	db, badger_err := badger.Open(badger.DefaultOptions("_db/cc.db"))
 	if badger_err != nil {
 		log.Fatal(badger_err)
 	}
@@ -39,15 +39,15 @@ func main() {
 				_key := cmd.Args[1]
 				_toAdd := cmd.Args[2:]
 				// for _ta in _toAdd
-				log.Printf("%s", _key)
-				log.Printf("%s", _toAdd)
+				// log.Printf("%s", _key)
+				// log.Printf("%s", _toAdd)
 
 				setErr := db.Update(func(txn *badger.Txn) error {
 					// set::<set_name>::member
-					for i, s := range _toAdd {
-						log.Printf("%d %s", i, s)
+					for _, s := range _toAdd {
+						// log.Printf("%d %s", i, s)
 						setKey := []byte(fmt.Sprintf("set::%s::%s", _key, s))
-						log.Printf("setting: %s %s", setKey, s)
+						// log.Printf("setting: %s %s", setKey, s)
 						err := txn.Set(setKey, s)
 
 						if err != nil {
@@ -55,9 +55,7 @@ func main() {
 							return err
 						}
 					}
-
 					return nil
-
 				})
 
 				if setErr != nil {
@@ -66,11 +64,11 @@ func main() {
 					conn.WriteString("OK")
 				}
 			case "srem":
-				log.Printf("%s %s", cmd.Args[1], cmd.Args[2:])
+				// log.Printf("%s %s", cmd.Args[1], cmd.Args[2:])
 				err := db.Update(func(txn *badger.Txn) error {
-					log.Printf("range %d", len(cmd.Args[2:]))
-					for i, s := range cmd.Args[2:] {
-						log.Printf("%d %s", i, s)
+					// log.Printf("range %d", len(cmd.Args[2:]))
+					for _, s := range cmd.Args[2:] {
+						// log.Printf("%d %s", i, s)
 						setKey := []byte(fmt.Sprintf("set::%s::%s", cmd.Args[1], s))
 						dErr := txn.Delete(setKey)
 						if dErr != nil {
@@ -88,7 +86,7 @@ func main() {
 					conn.WriteString("OK")
 				}
 			case "smembers":
-				log.Printf("%s", cmd)
+				// log.Printf("%s", cmd)
 				keyz := map[string]string{}
 				err := db.View(func(txn *badger.Txn) error {
 					itr := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -108,8 +106,8 @@ func main() {
 						}
 					}
 
-					log.Printf("Length: %d", len(keyz))
-					log.Printf("%s", keyz)
+					// log.Printf("Length: %d", len(keyz))
+					// log.Printf("%s", keyz)
 
 					return nil
 				})
