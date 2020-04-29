@@ -27,27 +27,45 @@ func main() {
 	go log.Printf("started server at %s", addr)
 	err := redcon.ListenAndServe(addr,
 		func(conn redcon.Conn, cmd redcon.Command) {
+			log.Printf("%s", cmd)
 			switch strings.ToLower(string(cmd.Args[0])) {
 			default:
-				conn.WriteError("ERR unknown command '" + string(cmd.Args[0]) + "'")
+				conn.WriteError("DANGER DANGER '" + string(cmd.Args[0]) + "'")
 			case "ping":
 				conn.WriteString("PONG")
 			case "quit":
 				conn.WriteString("OK")
 				conn.Close()
+			case "hset":
+				log.Printf("%s", cmd)
+				keys, err := hsetCmd(db, cmd)
+				if err != nil {
+					conn.WriteError("Unalbe to write hash")
+				} else {
+					conn.WriteInt(keys)
+				}
+			case "hgetall":
+				keys, err := hgetallCmd(db, cmd)
+
+				if err != nil {
+					conn.WriteError("ERR")
+				} else {
+					conn.WriteArray(len(keys) * 2)
+					for k, v := range keys {
+						conn.WriteBulk([]byte(k))
+						conn.WriteBulk([]byte(v))
+					}
+				}
+			case "hdel":
+				conn.WriteNull()
 			case "sadd":
 				_key := cmd.Args[1]
 				_toAdd := cmd.Args[2:]
-				// for _ta in _toAdd
-				// log.Printf("%s", _key)
-				// log.Printf("%s", _toAdd)
 
 				setErr := db.Update(func(txn *badger.Txn) error {
 					// set::<set_name>::member
 					for _, s := range _toAdd {
-						// log.Printf("%d %s", i, s)
 						setKey := []byte(fmt.Sprintf("set::%s::%s", _key, s))
-						// log.Printf("setting: %s %s", setKey, s)
 						err := txn.Set(setKey, s)
 
 						if err != nil {
@@ -64,11 +82,8 @@ func main() {
 					conn.WriteString("OK")
 				}
 			case "srem":
-				// log.Printf("%s %s", cmd.Args[1], cmd.Args[2:])
 				err := db.Update(func(txn *badger.Txn) error {
-					// log.Printf("range %d", len(cmd.Args[2:]))
 					for _, s := range cmd.Args[2:] {
-						// log.Printf("%d %s", i, s)
 						setKey := []byte(fmt.Sprintf("set::%s::%s", cmd.Args[1], s))
 						dErr := txn.Delete(setKey)
 						if dErr != nil {
@@ -95,9 +110,7 @@ func main() {
 
 					for itr.Seek(prefix); itr.ValidForPrefix(prefix); itr.Next() {
 						_item := itr.Item()
-						// _key := _item.Key()
 						_err := _item.Value(func(_val []byte) error {
-							// log.Printf("%s :: %s", _key, _val)
 							keyz[fmt.Sprintf("%s", _val)] = fmt.Sprintf("%s", _val)
 							return nil
 						})
@@ -105,9 +118,6 @@ func main() {
 							return _err
 						}
 					}
-
-					// log.Printf("Length: %d", len(keyz))
-					// log.Printf("%s", keyz)
 
 					return nil
 				})
@@ -125,28 +135,22 @@ func main() {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
-				// mu.Lock()
-				// items[string(cmd.Args[1])] = cmd.Args[2]
 
 				setErr := db.Update(func(txn *badger.Txn) error {
 					err := txn.Set(cmd.Args[1], cmd.Args[2])
 					return err
 				})
 
-				// mu.Unlock()
 				if setErr != nil {
 					conn.WriteNull()
 				} else {
 					conn.WriteString("OK")
 				}
 			case "get":
-				// log.Printf("%s", cmd.Args)
 				if len(cmd.Args) != 2 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
-				// mu.RLock()
-				// val, ok := items[string(cmd.Args[1])]
 
 				var bdgrVal []byte
 				getErr := db.View(func(txn *badger.Txn) error {
@@ -166,13 +170,9 @@ func main() {
 					return nil
 				})
 
-				// log.Printf("%s", bdgrVal)
-
-				// mu.RUnlock()
 				if getErr != nil {
 					conn.WriteNull()
 				} else {
-					// conn.WriteBulk(val)
 					conn.WriteBulk(bdgrVal)
 				}
 			case "del":
