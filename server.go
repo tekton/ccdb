@@ -46,9 +46,9 @@ func main() {
 					// set::<set_name>::member
 					for i, s := range _toAdd {
 						log.Printf("%d %s", i, s)
-						set_key := []byte(fmt.Sprintf("set::%s::%s", _key, s))
-						log.Printf("setting: %s %s", set_key, s)
-						err := txn.Set(set_key, s)
+						setKey := []byte(fmt.Sprintf("set::%s::%s", _key, s))
+						log.Printf("setting: %s %s", setKey, s)
+						err := txn.Set(setKey, s)
 
 						if err != nil {
 							log.Println(err)
@@ -62,6 +62,28 @@ func main() {
 
 				if setErr != nil {
 					conn.WriteNull()
+				} else {
+					conn.WriteString("OK")
+				}
+			case "srem":
+				log.Printf("%s %s", cmd.Args[1], cmd.Args[2:])
+				err := db.Update(func(txn *badger.Txn) error {
+					log.Printf("range %d", len(cmd.Args[2:]))
+					for i, s := range cmd.Args[2:] {
+						log.Printf("%d %s", i, s)
+						setKey := []byte(fmt.Sprintf("set::%s::%s", cmd.Args[1], s))
+						dErr := txn.Delete(setKey)
+						if dErr != nil {
+							log.Printf("dErr: %s", dErr)
+							return dErr
+						}
+					}
+
+					return nil
+				})
+
+				if err != nil {
+					conn.WriteError("Unable to delete")
 				} else {
 					conn.WriteString("OK")
 				}
