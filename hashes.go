@@ -59,3 +59,28 @@ func hgetallCmd(db *badger.DB, cmd redcon.Command) (map[string]string, error) {
 
 	return keyz, err
 }
+
+func hgetCmd(db *badger.DB, cmd redcon.Command) ([]byte, error) {
+	var bdgrVal []byte
+	_key := cmd.Args[1]
+	_toGet := cmd.Args[2]
+	getKey := []byte(fmt.Sprintf("hash::%s::%s", _key, _toGet))
+	getErr := db.View(func(txn *badger.Txn) error {
+		item, gErr := txn.Get(getKey)
+		if gErr != nil {
+			return gErr
+		}
+		err := item.Value(func(val []byte) error {
+			bdgrVal = append([]byte{}, val...)
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return bdgrVal, getErr
+}

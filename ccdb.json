@@ -1,4 +1,5 @@
 {
-    "port": ":6969",
-    "badger_file": "cc.db"
+    "port": ":6379",
+    "badger_file": "cc.db",
+    "log_level": "debug"
 }

@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/tidwall/redcon"
 	badger "github.com/dgraph-io/badger/v2"
 	"github.com/spf13/viper"
+    "github.com/rs/zerolog"
+    "github.com/rs/zerolog/log"
 )
 
 // var addr = ":6969"
@@ -29,14 +29,20 @@ func init() {
 	} else {
 		fmt.Println(SETTINGS.AllKeys())
 	}
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if SETTINGS.GetString("log_level") == "debug" {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
 }
 
 func main() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	db_loc := SETTINGS.GetString("badger_file")
 	db, badger_err := badger.Open(badger.DefaultOptions(db_loc))
 	if badger_err != nil {
-		log.Fatal(badger_err)
+		log.Fatal().Err(badger_err).Msg("Badger Error")
 	}
 	defer db.Close()
 
@@ -47,10 +53,10 @@ func main() {
 
 	addr := SETTINGS.GetString("port")
 
-	go log.Printf("started server at %s, storring at %s", addr, db_loc)
+	log.Info().Str("Port", addr).Str("DB", db_loc).Msg("ccdb started")
 	err := redcon.ListenAndServe(addr,
 		func(conn redcon.Conn, cmd redcon.Command) {
-			log.Printf("%s", cmd)
+			log.Debug().Str("cmd", fmt.Sprintf("%s", cmd.Args[0])).Str("value", fmt.Sprintf("%s", cmd.Args[1:])).Msg("query")
 			switch strings.ToLower(string(cmd.Args[0])) {
 			default:
 				conn.WriteError("DANGER DANGER '" + string(cmd.Args[0]) + "'")
@@ -60,12 +66,19 @@ func main() {
 				conn.WriteString("OK")
 				conn.Close()
 			case "hset":
-				log.Printf("%s", cmd)
 				keys, err := hsetCmd(db, cmd)
 				if err != nil {
 					conn.WriteError("Unalbe to write hash")
 				} else {
 					conn.WriteInt(keys)
+				}
+			case "hget":
+				bdgrVal, getErr := hgetCmd(db, cmd)
+				if getErr != nil {
+					log.Error().Err(getErr).Msg("hget error")
+					conn.WriteNull()
+				} else {
+					conn.WriteBulk(bdgrVal)
 				}
 			case "hgetall":
 				keys, err := hgetallCmd(db, cmd)
@@ -92,7 +105,7 @@ func main() {
 						err := txn.Set(setKey, s)
 
 						if err != nil {
-							log.Println(err)
+							// log.Println(err)
 							return err
 						}
 					}
@@ -110,7 +123,7 @@ func main() {
 						setKey := []byte(fmt.Sprintf("set::%s::%s", cmd.Args[1], s))
 						dErr := txn.Delete(setKey)
 						if dErr != nil {
-							log.Printf("dErr: %s", dErr)
+							// log.Printf("dErr: %s", dErr)
 							return dErr
 						}
 					}
@@ -225,6 +238,6 @@ func main() {
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 }
