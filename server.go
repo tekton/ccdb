@@ -2,18 +2,38 @@ package main
 
 import (
 	"log"
+	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/tidwall/redcon"
 	badger "github.com/dgraph-io/badger/v2"
+	"github.com/spf13/viper"
 )
 
-var addr = ":6969"
+// var addr = ":6969"
+// application wide settings
+var SETTINGS *viper.Viper
+
+func init() {
+	SETTINGS = viper.New()
+	SETTINGS.Set("verbose", true)
+	SETTINGS.AddConfigPath(".")
+	SETTINGS.AddConfigPath("./config")
+	SETTINGS.AddConfigPath("/etc/ccdb")
+	SETTINGS.SetConfigName("ccdb")
+	viper_err := SETTINGS.ReadInConfig()       // Find and read the config file
+	if viper_err != nil {                      // Handle errors reading the config file
+		panic(fmt.Errorf("Fatal error config file: %s \n", viper_err))
+	} else {
+		fmt.Println(SETTINGS.AllKeys())
+	}
+}
 
 func main() {
 
-	db, badger_err := badger.Open(badger.DefaultOptions("cc.db"))
+	db_loc := SETTINGS.GetString("badger_file")
+	db, badger_err := badger.Open(badger.DefaultOptions(db_loc))
 	if badger_err != nil {
 		log.Fatal(badger_err)
 	}
@@ -21,7 +41,10 @@ func main() {
 
 	var mu sync.RWMutex
 	var items = make(map[string][]byte)
-	go log.Printf("started server at %s", addr)
+
+	addr := SETTINGS.GetString("port")
+
+	go log.Printf("started server at %s, storring at %s", addr, db_loc)
 	err := redcon.ListenAndServe(addr,
 		func(conn redcon.Conn, cmd redcon.Command) {
 			switch strings.ToLower(string(cmd.Args[0])) {
