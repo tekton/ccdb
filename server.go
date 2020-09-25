@@ -65,6 +65,12 @@ func main() {
 			case "quit":
 				conn.WriteString("OK")
 				conn.Close()
+			case "multi":
+				log.Debug().Msg("multi not yet implemented")
+				conn.WriteString("OK")
+			case "exec":
+				log.Debug().Msg("exec not yet implemented")
+				conn.WriteString("OK")
 			case "echo":
 				var echo []byte
 				for i, byteVal := range cmd.Args[1:] {
