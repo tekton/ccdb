@@ -228,13 +228,11 @@ func main() {
 			}
 		},
 		func(conn redcon.Conn) bool {
-			// use this function to accept or deny the connection.
-			// log.Printf("accept: %s", conn.RemoteAddr())
+			log.Debug().Str("addr", conn.RemoteAddr()).Msg("connection established")
 			return true
 		},
 		func(conn redcon.Conn, err error) {
-			// this is called when the connection has been closed
-			// log.Printf("closed: %s, err: %v", conn.RemoteAddr(), err)
+			log.Debug().Err(err).Str("addr", conn.RemoteAddr()).Msg("connection closed") //("closed: %s, err: %v", conn.RemoteAddr(), err)
 		},
 	)
 	if err != nil {
