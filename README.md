@@ -23,3 +23,10 @@ Notes
 -----
 
 An example config is included, those are the only three options right now.
+
+docker
+------
+```bash
+docker build -t ccdb:dev .
+docker container run -p 6379:6969 ccdb:dev
+```
