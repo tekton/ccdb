@@ -65,6 +65,17 @@ func main() {
 			case "quit":
 				conn.WriteString("OK")
 				conn.Close()
+			case "echo":
+				var echo []byte
+				for i, byteVal := range cmd.Args[1:] {
+					if (i > 0) {
+						echo = append(echo, []byte(" ")[0])
+					}
+					for _, b := range byteVal {
+						echo = append(echo, b)
+					}
+				}
+				conn.WriteBulk(echo)
 			case "hset":
 				keys, err := hsetCmd(db, cmd)
 				if err != nil {
