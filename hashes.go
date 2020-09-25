@@ -62,6 +62,9 @@ func hgetallCmd(db *badger.DB, cmd redcon.Command) (map[string]string, error) {
 
 func hgetCmd(db *badger.DB, cmd redcon.Command) ([]byte, error) {
 	var bdgrVal []byte
+	if len(cmd.Args) < 3 {
+		return bdgrVal, fmt.Errorf("Not enough arguments")
+	}
 	_key := cmd.Args[1]
 	_toGet := cmd.Args[2]
 	getKey := []byte(fmt.Sprintf("hash::%s::%s", _key, _toGet))
