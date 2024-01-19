@@ -1,15 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
 
-	"github.com/tidwall/redcon"
 	badger "github.com/dgraph-io/badger/v2"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-    "github.com/rs/zerolog"
-    "github.com/rs/zerolog/log"
+	"github.com/tidwall/redcon"
 )
 
 // var addr = ":6969"
@@ -23,8 +24,8 @@ func init() {
 	SETTINGS.AddConfigPath("./config")
 	SETTINGS.AddConfigPath("/etc/ccdb")
 	SETTINGS.SetConfigName("ccdb")
-	viper_err := SETTINGS.ReadInConfig()       // Find and read the config file
-	if viper_err != nil {                      // Handle errors reading the config file
+	viper_err := SETTINGS.ReadInConfig() // Find and read the config file
+	if viper_err != nil {                // Handle errors reading the config file
 		panic(fmt.Errorf("Fatal error config file: %s \n", viper_err))
 	} else {
 		fmt.Println(SETTINGS.AllKeys())
@@ -74,7 +75,7 @@ func main() {
 			case "echo":
 				var echo []byte
 				for i, byteVal := range cmd.Args[1:] {
-					if (i > 0) {
+					if i > 0 {
 						echo = append(echo, []byte(" ")[0])
 					}
 					for _, b := range byteVal {
@@ -241,6 +242,41 @@ func main() {
 					conn.WriteInt(0)
 				} else {
 					conn.WriteInt(1)
+				}
+			case "keys":
+				if len(cmd.Args) != 2 {
+					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
+					return
+				}
+				keys := [][]byte{}
+				if err := db.View(func(txn *badger.Txn) error {
+					opts := badger.DefaultIteratorOptions
+					opts.PrefetchValues = false
+
+					if string(cmd.Args[1]) != "*" {
+						opts.Prefix = []byte(cmd.Args[1])
+					}
+
+					it := txn.NewIterator(opts)
+					defer it.Close()
+					for it.Rewind(); it.Valid(); it.Next() {
+						if bytes.Contains(it.Item().Key(), []byte("set::")) {
+							continue
+						}
+						keys = append(keys, it.Item().Key())
+					}
+					return nil
+				}); err != nil {
+					conn.WriteError(err.Error())
+					return
+				}
+				if len(keys) == 0 {
+					conn.WriteArray(0)
+					return
+				}
+				conn.WriteArray(len(keys))
+				for _, key := range keys {
+					conn.WriteBulk(key)
 				}
 			}
 		},
