@@ -73,6 +73,8 @@ func main() {
 	log.Info().Str("Port", addr).Str("DB", dbLoc).Msg("ccdb started")
 	if err := redcon.ListenAndServe(addr,
 		func(conn redcon.Conn, cmd redcon.Command) {
+			log.Debug().Str("cmd", fmt.Sprintf("%s", cmd.Args[0])).Str("value", fmt.Sprintf("%s", cmd.Args[1:])).Msg("query")
+
 			cmdStr := strings.ToLower(string(cmd.Args[0]))
 
 			// initial connection
@@ -140,7 +142,7 @@ func main() {
 }
 
 func writeResponse(conn redcon.Conn, res any) {
-	log.Debug().Msg(fmt.Sprintf("response: %v", res))
+	log.Debug().Str("response", fmt.Sprintf("%v", res)).Msg("response")
 	switch res := res.(type) {
 	case string:
 		conn.WriteString(res)
