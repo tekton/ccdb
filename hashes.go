@@ -46,7 +46,7 @@ func hgetallCmd(db *badger.DB, cmd redcon.Command) (map[string]string, error) {
 			_item := itr.Item()
 			_key := _item.Key()[len(prefix):]
 			_err := _item.Value(func(_val []byte) error {
-				keyz[fmt.Sprintf("%s", _key)] = fmt.Sprintf("%s", _val)
+				keyz[string(_key)] = string(_val)
 				return nil
 			})
 			if _err != nil {
