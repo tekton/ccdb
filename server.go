@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -17,6 +16,27 @@ import (
 // application wide settings
 var SETTINGS *viper.Viper
 
+var commands = map[string]func(db *badger.DB, conn redcon.Conn, cmd redcon.Command) (any, error){
+	"ping":     ping,
+	"set":      set,
+	"get":      get,
+	"del":      del,
+	"keys":     keys,
+	"sadd":     sadd,
+	"srem":     srem,
+	"smembers": smembers,
+	"hset":     hset,
+	"hget":     hget,
+	"hdel":     hdel,
+	"hgetall":  hgetall,
+	"multi":    multi,
+	"echo":     echo,
+	"quit":     quit,
+}
+
+var mu sync.RWMutex
+var connections = map[string]*connection{}
+
 func init() {
 	SETTINGS = viper.New()
 	SETTINGS.Set("verbose", true)
@@ -24,11 +44,10 @@ func init() {
 	SETTINGS.AddConfigPath("./config")
 	SETTINGS.AddConfigPath("/etc/ccdb")
 	SETTINGS.SetConfigName("ccdb")
-	viper_err := SETTINGS.ReadInConfig() // Find and read the config file
-	if viper_err != nil {                // Handle errors reading the config file
-		panic(fmt.Errorf("Fatal error config file: %s \n", viper_err))
-	} else {
-		fmt.Println(SETTINGS.AllKeys())
+
+	// Find and read the config file
+	if err := SETTINGS.ReadInConfig(); err != nil {
+		panic(fmt.Errorf("Error reading config file: %s \n", err))
 	}
 
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -40,255 +59,117 @@ func init() {
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	db_loc := SETTINGS.GetString("badger_file")
-	db, badger_err := badger.Open(badger.DefaultOptions(db_loc))
-	if badger_err != nil {
-		log.Fatal().Err(badger_err).Msg("Badger Error")
+	dbLoc := SETTINGS.GetString("badger_file")
+	db, err := badger.Open(badger.DefaultOptions(dbLoc))
+	if err != nil {
+		log.Fatal().Err(err).Msg("Badger Error")
 	}
 	defer db.Close()
 
 	// GET, SMEMBERS, HSET, HINCR, HGETALL, KEYS, SADD, SREM, DEL
 
-	var mu sync.RWMutex
-	var items = make(map[string][]byte)
-
 	addr := SETTINGS.GetString("port")
 
-	log.Info().Str("Port", addr).Str("DB", db_loc).Msg("ccdb started")
-	err := redcon.ListenAndServe(addr,
+	log.Info().Str("Port", addr).Str("DB", dbLoc).Msg("ccdb started")
+	if err := redcon.ListenAndServe(addr,
 		func(conn redcon.Conn, cmd redcon.Command) {
 			log.Debug().Str("cmd", fmt.Sprintf("%s", cmd.Args[0])).Str("value", fmt.Sprintf("%s", cmd.Args[1:])).Msg("query")
-			switch strings.ToLower(string(cmd.Args[0])) {
-			default:
-				conn.WriteError("DANGER DANGER '" + string(cmd.Args[0]) + "'")
-			case "ping":
-				conn.WriteString("PONG")
-			case "quit":
+
+			cmdStr := strings.ToLower(string(cmd.Args[0]))
+
+			// initial connection
+			if cmdStr == "command" {
 				conn.WriteString("OK")
-				conn.Close()
-			case "multi":
-				log.Debug().Msg("multi not yet implemented")
-				conn.WriteString("OK")
-			case "exec":
-				log.Debug().Msg("exec not yet implemented")
-				conn.WriteString("OK")
-			case "echo":
-				var echo []byte
-				for i, byteVal := range cmd.Args[1:] {
-					if i > 0 {
-						echo = append(echo, []byte(" ")[0])
-					}
-					for _, b := range byteVal {
-						echo = append(echo, b)
-					}
-				}
-				conn.WriteBulk(echo)
-			case "hset":
-				keys, err := hsetCmd(db, cmd)
+				return
+			}
+
+			// handle executing multi
+			// exec has to be handled here to
+			// prevent a deadlock
+			if cmdStr == "exec" {
+				res, err := exec(db, conn, cmd)
 				if err != nil {
-					conn.WriteError("Unalbe to write hash")
-				} else {
-					conn.WriteInt(keys)
-				}
-			case "hget":
-				bdgrVal, getErr := hgetCmd(db, cmd)
-				if getErr != nil {
-					log.Error().Err(getErr).Msg("hget error")
-					conn.WriteNull()
-				} else {
-					conn.WriteBulk(bdgrVal)
-				}
-			case "hgetall":
-				keys, err := hgetallCmd(db, cmd)
-
-				if err != nil {
-					conn.WriteError("ERR")
-				} else {
-					conn.WriteArray(len(keys) * 2)
-					for k, v := range keys {
-						conn.WriteBulk([]byte(k))
-						conn.WriteBulk([]byte(v))
-					}
-				}
-			case "hdel":
-				conn.WriteNull()
-			case "sadd":
-				_key := cmd.Args[1]
-				_toAdd := cmd.Args[2:]
-
-				setErr := db.Update(func(txn *badger.Txn) error {
-					// set::<set_name>::member
-					for _, s := range _toAdd {
-						setKey := []byte(fmt.Sprintf("set::%s::%s", _key, s))
-						err := txn.Set(setKey, s)
-
-						if err != nil {
-							// log.Println(err)
-							return err
-						}
-					}
-					return nil
-				})
-
-				if setErr != nil {
-					conn.WriteNull()
-				} else {
-					conn.WriteString("OK")
-				}
-			case "srem":
-				err := db.Update(func(txn *badger.Txn) error {
-					for _, s := range cmd.Args[2:] {
-						setKey := []byte(fmt.Sprintf("set::%s::%s", cmd.Args[1], s))
-						dErr := txn.Delete(setKey)
-						if dErr != nil {
-							// log.Printf("dErr: %s", dErr)
-							return dErr
-						}
-					}
-
-					return nil
-				})
-
-				if err != nil {
-					conn.WriteError("Unable to delete")
-				} else {
-					conn.WriteString("OK")
-				}
-			case "smembers":
-				// log.Printf("%s", cmd)
-				keyz := map[string]string{}
-				err := db.View(func(txn *badger.Txn) error {
-					itr := txn.NewIterator(badger.DefaultIteratorOptions)
-					defer itr.Close()
-					prefix := []byte(fmt.Sprintf("set::%s::", cmd.Args[1]))
-
-					for itr.Seek(prefix); itr.ValidForPrefix(prefix); itr.Next() {
-						_item := itr.Item()
-						_err := _item.Value(func(_val []byte) error {
-							keyz[fmt.Sprintf("%s", _val)] = fmt.Sprintf("%s", _val)
-							return nil
-						})
-						if _err != nil {
-							return _err
-						}
-					}
-
-					return nil
-				})
-
-				if err != nil {
-					conn.WriteError("ERR")
-				} else {
-					conn.WriteArray(len(keyz))
-					for _, v := range keyz {
-						conn.WriteBulk([]byte(v))
-					}
-				}
-			case "set":
-				if len(cmd.Args) != 3 {
-					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
-					return
-				}
-
-				setErr := db.Update(func(txn *badger.Txn) error {
-					err := txn.Set(cmd.Args[1], cmd.Args[2])
-					return err
-				})
-
-				if setErr != nil {
-					conn.WriteNull()
-				} else {
-					conn.WriteString("OK")
-				}
-			case "get":
-				if len(cmd.Args) != 2 {
-					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
-					return
-				}
-
-				var bdgrVal []byte
-				getErr := db.View(func(txn *badger.Txn) error {
-					item, gErr := txn.Get(cmd.Args[1])
-					if gErr != nil {
-						return gErr
-					}
-					err := item.Value(func(val []byte) error {
-						bdgrVal = append([]byte{}, val...)
-						return nil
-					})
-
-					if err != nil {
-						return err
-					}
-
-					return nil
-				})
-
-				if getErr != nil {
-					conn.WriteNull()
-				} else {
-					conn.WriteBulk(bdgrVal)
-				}
-			case "del":
-				if len(cmd.Args) != 2 {
-					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
-					return
-				}
-				mu.Lock()
-				_, ok := items[string(cmd.Args[1])]
-				delete(items, string(cmd.Args[1]))
-				mu.Unlock()
-				if !ok {
-					conn.WriteInt(0)
-				} else {
-					conn.WriteInt(1)
-				}
-			case "keys":
-				if len(cmd.Args) != 2 {
-					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
-					return
-				}
-				keys := [][]byte{}
-				if err := db.View(func(txn *badger.Txn) error {
-					opts := badger.DefaultIteratorOptions
-					opts.PrefetchValues = false
-
-					if string(cmd.Args[1]) != "*" {
-						opts.Prefix = []byte(cmd.Args[1])
-					}
-
-					it := txn.NewIterator(opts)
-					defer it.Close()
-					for it.Rewind(); it.Valid(); it.Next() {
-						if bytes.Contains(it.Item().Key(), []byte("set::")) {
-							continue
-						}
-						keys = append(keys, it.Item().Key())
-					}
-					return nil
-				}); err != nil {
 					conn.WriteError(err.Error())
 					return
 				}
-				if len(keys) == 0 {
-					conn.WriteArray(0)
+
+				writeResponse(conn, res)
+				return
+			}
+
+			// make sure we support the command
+			if selectedCmd, ok := commands[cmdStr]; ok {
+				// handle multi
+				if connections[conn.RemoteAddr()].Multi {
+					mu.Lock()
+					defer mu.Unlock()
+
+					connections[conn.RemoteAddr()].Commands = append(connections[conn.RemoteAddr()].Commands, cmd)
+					conn.WriteString("QUEUED")
 					return
 				}
-				conn.WriteArray(len(keys))
-				for _, key := range keys {
-					conn.WriteBulk(key)
+
+				// handle commands
+				res, err := selectedCmd(db, conn, cmd)
+				if err != nil {
+					conn.WriteError(err.Error())
+					return
 				}
+
+				writeResponse(conn, res)
+				return
 			}
+
+			// unknown command
+			conn.WriteError("ERR unknown command '" + cmdStr + "'")
 		},
 		func(conn redcon.Conn) bool {
 			log.Debug().Str("addr", conn.RemoteAddr()).Msg("connection established")
+			connections[conn.RemoteAddr()] = &connection{
+				Addr:     conn.RemoteAddr(),
+				Multi:    false,
+				Commands: []redcon.Command{},
+			}
 			return true
 		},
 		func(conn redcon.Conn, err error) {
 			log.Debug().Err(err).Str("addr", conn.RemoteAddr()).Msg("connection closed") //("closed: %s, err: %v", conn.RemoteAddr(), err)
+			connections[conn.RemoteAddr()] = nil
 		},
-	)
-	if err != nil {
+	); err != nil {
 		log.Fatal().Err(err)
+	}
+}
+
+func writeResponse(conn redcon.Conn, res any) {
+	log.Debug().Str("response", fmt.Sprintf("%v", res)).Msg("response")
+	switch res := res.(type) {
+	case string:
+		conn.WriteString(res)
+	case []byte:
+		conn.WriteBulk(res)
+	case int:
+		conn.WriteInt(res)
+	case redcon.SimpleInt:
+		conn.WriteInt(int(res))
+	case []string:
+		conn.WriteArray(len(res))
+		for _, v := range res {
+			conn.WriteString(v)
+		}
+	case []any:
+		conn.WriteArray(len(res))
+		for _, v := range res {
+			writeResponse(conn, v)
+		}
+	case map[string]any:
+		conn.WriteArray(len(res))
+		for _, v := range res {
+			conn.WriteBulk([]byte(v.(string)))
+		}
+	case nil:
+		conn.WriteNull()
+	default:
+		conn.WriteString(fmt.Sprintf("%v", res))
 	}
 }
