@@ -2,8 +2,6 @@ module github.com/tekton/ccdb
 
 go 1.20
 
-toolchain go1.21.5
-
 require (
 	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/rs/zerolog v1.20.0
