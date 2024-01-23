@@ -6,7 +6,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/rs/zerolog v1.31.0
 	github.com/spf13/viper v1.18.2
-	github.com/tidwall/redcon v1.3.2
+	github.com/tidwall/redcon v1.6.2
 )
 
 require (
@@ -38,6 +38,8 @@ require (
 	github.com/spf13/jwalterweatherman v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tidwall/btree v1.7.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
