@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	badger "github.com/dgraph-io/badger/v2"
+	badger "github.com/dgraph-io/badger/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/tidwall/redcon"
 )
