@@ -18,8 +18,8 @@ func srem(db *badger.DB, conn redcon.Conn, cmd redcon.Command) (any, error) {
 
 		return nil
 	}); err != nil {
-		return nil, err
+		return redcon.SimpleInt(0), err
 	}
 
-	return 1, nil
+	return redcon.SimpleInt(1), nil
 }
