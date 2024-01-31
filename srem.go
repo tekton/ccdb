@@ -21,5 +21,5 @@ func srem(db *badger.DB, conn redcon.Conn, cmd redcon.Command) (any, error) {
 		return nil, err
 	}
 
-	return "OK", nil
+	return 1, nil
 }
